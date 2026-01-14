@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' file:">
+  <title>Suno Song Remaster</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Custom Title Bar -->
+  <div class="title-bar">
+    <div class="title-bar-drag"></div>
+    <div class="window-controls">
+      <button class="win-btn minimize" id="minimizeBtn">
+        <svg width="12" height="12" viewBox="0 0 12 12"><rect y="5" width="12" height="1" fill="currentColor"/></svg>
+      </button>
+      <button class="win-btn maximize" id="maximizeBtn">
+        <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" stroke="currentColor" stroke-width="1" fill="none"/></svg>
+      </button>
+      <button class="win-btn close" id="closeBtn">
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="1.5"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="logo-icon">🎵</div>
+        <div class="logo-text">
+          <span class="logo-title">Suno Remaster</span>
+          <span class="logo-subtitle">Pro Mastering</span>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <label class="tips-toggle">
+          <input type="checkbox" id="showTips" checked>
+          <span>Show Tips</span>
+        </label>
+        <div class="checklist-mini">
+          <div class="check-item" id="mini-lufs"><span>●</span> -14 LUFS</div>
+          <div class="check-item" id="mini-peak"><span>●</span> True Peak</div>
+          <div class="check-item" id="mini-format"><span>●</span> WAV Ready</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- File Drop Zone -->
+      <div class="file-zone" id="dropZone">
+        <div class="file-zone-content" id="fileZoneContent">
+          <div class="drop-icon">📂</div>
+          <p>Drop audio file here or</p>
+          <button id="selectFile" class="btn-select">Browse Files</button>
+          <span class="file-types">MP3, WAV, FLAC, AAC</span>
+        </div>
+        <div class="file-loaded hidden" id="fileLoaded">
+          <div class="file-header">
+            <div class="file-info-row">
+              <span class="file-icon">🎵</span>
+              <div class="file-details">
+                <span class="file-name" id="fileName">No file</span>
+                <span class="file-meta" id="fileMeta">--</span>
+              </div>
+              <button id="changeFile" class="btn-change">Change</button>
+            </div>
+          </div>
+          <div class="audio-player">
+            <button id="playBtn" class="btn-play-main" disabled>
+              <span id="playIcon">▶️</span>
+            </button>
+            <button id="stopBtn" class="btn-stop" disabled>⏹️</button>
+            <div class="player-track">
+              <span id="currentTime" class="time">0:00</span>
+              <input type="range" id="seekBar" class="seek-bar" min="0" max="100" value="0">
+              <span id="duration" class="time">0:00</span>
+            </div>
+            <button id="bypassBtn" class="btn-bypass">🔊 FX On</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings Grid -->
+      <div class="panel-grid">
+        <div class="settings-card">
+          <h3>📊 Loudness <span class="export-badge">Export Only</span></h3>
+          <label class="toggle-row" data-tip="Adjusts overall volume to Spotify's -14 LUFS standard. Applied on export only (requires full file analysis).">
+            <span>Normalize -14 LUFS</span>
+            <input type="checkbox" id="normalizeLoudness" checked>
+            <span class="toggle"></span>
+          </label>
+          <label class="toggle-row" data-tip="Prevents audio from clipping by limiting peaks to the ceiling value.">
+            <span>True Peak Limit</span>
+            <input type="checkbox" id="truePeakLimit" checked>
+            <span class="toggle"></span>
+          </label>
+          <div class="slider-row" data-tip="Maximum peak level. -1dB is standard for streaming.">
+            <span>Ceiling</span>
+            <input type="range" id="truePeakCeiling" min="-3" max="0" step="0.1" value="-1">
+            <span class="slider-value" id="ceilingValue">-1.0 dB</span>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>🎚️ Quick Fix <span class="live-badge">Live</span></h3>
+          <label class="toggle-row" data-tip="Light compression to glue the mix together and add punch.">
+            <span>Glue Compression</span>
+            <input type="checkbox" id="glueCompression">
+            <span class="toggle"></span>
+          </label>
+          <label class="toggle-row" data-tip="Removes sub-bass rumble below 30Hz that wastes headroom.">
+            <span>Clean Low End</span>
+            <input type="checkbox" id="cleanLowEnd" checked>
+            <span class="toggle"></span>
+          </label>
+          <label class="toggle-row" data-tip="Makes bass frequencies mono for better club/speaker compatibility. Export only.">
+            <span>Center Bass</span>
+            <input type="checkbox" id="centerBass">
+            <span class="toggle"></span>
+          </label>
+        </div>
+
+        <div class="settings-card">
+          <h3>✨ Polish <span class="live-badge">Live</span></h3>
+          <label class="toggle-row" data-tip="Reduces muddy frequencies around 250Hz for clarity.">
+            <span>Cut Mud</span>
+            <input type="checkbox" id="cutMud">
+            <span class="toggle"></span>
+          </label>
+          <label class="toggle-row" data-tip="Adds sparkle and brightness with a 12kHz high shelf boost.">
+            <span>Add Air</span>
+            <input type="checkbox" id="addAir">
+            <span class="toggle"></span>
+          </label>
+          <label class="toggle-row" data-tip="Tames harsh frequencies around 4-6kHz (sibilance, harshness).">
+            <span>Tame Harshness</span>
+            <input type="checkbox" id="tameHarsh">
+            <span class="toggle"></span>
+          </label>
+        </div>
+
+        <div class="settings-card">
+          <h3>💾 Output</h3>
+          <div class="select-row" data-tip="44.1kHz is CD quality and Spotify standard. 48kHz for video.">
+            <span>Sample Rate</span>
+            <select id="sampleRate">
+              <option value="44100">44.1 kHz</option>
+              <option value="48000">48 kHz</option>
+            </select>
+          </div>
+          <div class="select-row" data-tip="16-bit is CD quality. 24-bit has more dynamic range.">
+            <span>Bit Depth</span>
+            <select id="bitDepth">
+              <option value="16">16-bit</option>
+              <option value="24">24-bit</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5-Band EQ -->
+      <div class="eq-section">
+        <div class="eq-bands">
+          <div class="eq-band">
+            <span class="band-label">LOW</span>
+            <input type="range" class="eq-slider" id="eqLow" min="-12" max="12" value="0" orient="vertical">
+            <span class="band-value" id="eqLowVal">0 dB</span>
+            <span class="band-freq">80 Hz</span>
+          </div>
+          <div class="eq-band">
+            <span class="band-label">LOW MID</span>
+            <input type="range" class="eq-slider" id="eqLowMid" min="-12" max="12" value="0" orient="vertical">
+            <span class="band-value" id="eqLowMidVal">0 dB</span>
+            <span class="band-freq">250 Hz</span>
+          </div>
+          <div class="eq-band">
+            <span class="band-label">MID</span>
+            <input type="range" class="eq-slider" id="eqMid" min="-12" max="12" value="0" orient="vertical">
+            <span class="band-value" id="eqMidVal">0 dB</span>
+            <span class="band-freq">1 kHz</span>
+          </div>
+          <div class="eq-band">
+            <span class="band-label">HIGH MID</span>
+            <input type="range" class="eq-slider" id="eqHighMid" min="-12" max="12" value="0" orient="vertical">
+            <span class="band-value" id="eqHighMidVal">0 dB</span>
+            <span class="band-freq">4 kHz</span>
+          </div>
+          <div class="eq-band">
+            <span class="band-label">HIGH</span>
+            <input type="range" class="eq-slider" id="eqHigh" min="-12" max="12" value="0" orient="vertical">
+            <span class="band-value" id="eqHighVal">0 dB</span>
+            <span class="band-freq">12 kHz</span>
+          </div>
+        </div>
+        <div class="eq-presets">
+          <button class="preset-btn active" data-preset="flat">Flat</button>
+          <button class="preset-btn" data-preset="vocal">Vocal Boost</button>
+          <button class="preset-btn" data-preset="bass">Bass Boost</button>
+          <button class="preset-btn" data-preset="bright">Bright</button>
+          <button class="preset-btn" data-preset="warm">Warm</button>
+          <button class="preset-btn" data-preset="suno">Suno Fix</button>
+        </div>
+      </div>
+
+      <!-- Process Button -->
+      <div class="process-bar">
+        <div class="progress-container hidden" id="progressContainer">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <span id="progressText">0%</span>
+        </div>
+        <button id="processBtn" class="btn-process" disabled>
+          <span>🚀</span> Export Mastered WAV
+        </button>
+      </div>
+      <div id="statusMessage" class="status-message"></div>
+    </main>
+  </div>
+
+  <!-- Tooltip element -->
+  <div id="tooltip" class="tooltip"></div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
