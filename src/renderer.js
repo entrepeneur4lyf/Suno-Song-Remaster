@@ -1155,7 +1155,7 @@ dropZone.addEventListener('drop', async (e) => {
   dropZone.classList.remove('drag-over');
 
   const file = e.dataTransfer.files[0];
-  if (file && /\.(mp3|wav|flac|aac|m4a)$/i.test(file.name)) {
+  if (file && /\.(mp3|wav|flac|aac|m4a|mp4)$/i.test(file.name)) {
     stopAudio();
     playerState.pauseTime = 0;
     await loadFile(file.path);
