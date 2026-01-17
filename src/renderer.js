@@ -438,12 +438,10 @@ function createAudioChain() {
   // Create analysers for visualization (stereo metering)
   audioNodes.analyser = ctx.createAnalyser();
   audioNodes.analyser.fftSize = 2048;
-  // Use smaller FFT for metering - 256 samples is sufficient and more efficient
-  // This reduces peak calculation from 2048 iterations to 256 per channel
   audioNodes.analyserL = ctx.createAnalyser();
-  audioNodes.analyserL.fftSize = 256;
+  audioNodes.analyserL.fftSize = 2048;
   audioNodes.analyserR = ctx.createAnalyser();
-  audioNodes.analyserR.fftSize = 256;
+  audioNodes.analyserR.fftSize = 2048;
   audioNodes.meterSplitter = ctx.createChannelSplitter(2);
 
   // Create nodes
