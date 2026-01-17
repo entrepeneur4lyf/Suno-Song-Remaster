@@ -3,6 +3,7 @@ import { Fader } from './components/Fader.js';
 
 let wavesurfer = null;
 let currentBlobUrl = null; // Track blob URL for cleanup
+let hoverContainer = null; // Track container reference for hover cleanup
 
 // Fader instances
 const faders = {
@@ -17,7 +18,27 @@ const faders = {
 
 // ============================================================================
 // LUFS Loudness Measurement & Normalization (Pure JavaScript - No FFmpeg)
+// ITU-R BS.1770-4 compliant implementation
 // ============================================================================
+
+// ITU-R BS.1770-4 K-weighting filter specifications
+const K_WEIGHTING = {
+  HIGH_SHELF_FREQ: 1681.97,   // Hz - Head-related transfer function correction
+  HIGH_SHELF_GAIN: 4.0,       // dB
+  HIGH_SHELF_Q: 0.71,         // Q factor (approximately 1/sqrt(2))
+  HIGH_PASS_FREQ: 38.14,      // Hz - DC blocking / rumble filter
+  HIGH_PASS_Q: 0.5            // Q factor
+};
+
+// LUFS gating thresholds (ITU-R BS.1770-4)
+const LUFS_CONSTANTS = {
+  BLOCK_SIZE_SEC: 0.4,           // 400ms measurement blocks
+  BLOCK_OVERLAP: 0.75,           // 75% overlap (100ms hop)
+  ABSOLUTE_GATE_LUFS: -70,       // Absolute threshold in LUFS
+  ABSOLUTE_GATE_LINEAR: 1e-7,    // Math.pow(10, -70/10) = 1e-7
+  RELATIVE_GATE_OFFSET: 0.1,     // -10 dB below ungated mean (10^(-10/10) = 0.1)
+  LOUDNESS_OFFSET: -0.691        // Reference offset for LUFS calculation
+};
 
 /**
  * Apply biquad filter to audio samples
@@ -85,10 +106,9 @@ function measureLUFS(audioBuffer) {
   const numChannels = audioBuffer.numberOfChannels;
   const length = audioBuffer.length;
 
-  // Minimum 400ms required for LUFS measurement (one block)
-  const minDuration = 0.4;
-  if (audioBuffer.duration < minDuration) {
-    console.warn('[LUFS] Audio too short for reliable measurement (< 400ms)');
+  // Minimum block size required for LUFS measurement
+  if (audioBuffer.duration < LUFS_CONSTANTS.BLOCK_SIZE_SEC) {
+    console.warn(`[LUFS] Audio too short for reliable measurement (< ${LUFS_CONSTANTS.BLOCK_SIZE_SEC * 1000}ms)`);
     return -14; // Return target LUFS as fallback
   }
 
@@ -97,9 +117,18 @@ function measureLUFS(audioBuffer) {
     channels.push(audioBuffer.getChannelData(ch));
   }
 
-  // Apply K-weighting filters
-  const highShelfCoeffs = calcHighShelfCoeffs(sampleRate, 1681.97, 4.0, 0.71);
-  const highPassCoeffs = calcHighPassCoeffs(sampleRate, 38.14, 0.5);
+  // Apply K-weighting filters (ITU-R BS.1770-4)
+  const highShelfCoeffs = calcHighShelfCoeffs(
+    sampleRate,
+    K_WEIGHTING.HIGH_SHELF_FREQ,
+    K_WEIGHTING.HIGH_SHELF_GAIN,
+    K_WEIGHTING.HIGH_SHELF_Q
+  );
+  const highPassCoeffs = calcHighPassCoeffs(
+    sampleRate,
+    K_WEIGHTING.HIGH_PASS_FREQ,
+    K_WEIGHTING.HIGH_PASS_Q
+  );
 
   const filteredChannels = channels.map(ch => {
     let filtered = applyBiquadFilter(ch, highShelfCoeffs);
@@ -107,9 +136,9 @@ function measureLUFS(audioBuffer) {
     return filtered;
   });
 
-  // Calculate mean square per 400ms block with 75% overlap
-  const blockSize = Math.floor(sampleRate * 0.4);
-  const hopSize = Math.floor(sampleRate * 0.1);
+  // Calculate mean square per block with overlap (ITU-R BS.1770-4)
+  const blockSize = Math.floor(sampleRate * LUFS_CONSTANTS.BLOCK_SIZE_SEC);
+  const hopSize = Math.floor(sampleRate * LUFS_CONSTANTS.BLOCK_SIZE_SEC * (1 - LUFS_CONSTANTS.BLOCK_OVERLAP));
   const blocks = [];
 
   for (let start = 0; start + blockSize <= length; start += hopSize) {
@@ -125,21 +154,23 @@ function measureLUFS(audioBuffer) {
 
   if (blocks.length === 0) return -Infinity;
 
-  // Absolute threshold gating (-70 LUFS)
-  let gatedBlocks = blocks.filter(ms => ms > Math.pow(10, -7));
+  // Absolute threshold gating (blocks below -70 LUFS are ignored)
+  let gatedBlocks = blocks.filter(ms => ms > LUFS_CONSTANTS.ABSOLUTE_GATE_LINEAR);
   if (gatedBlocks.length === 0) return -Infinity;
 
   // Relative threshold gating (-10 dB below ungated mean)
   const ungatedMean = gatedBlocks.reduce((a, b) => a + b, 0) / gatedBlocks.length;
-  gatedBlocks = gatedBlocks.filter(ms => ms > ungatedMean * 0.1);
+  gatedBlocks = gatedBlocks.filter(ms => ms > ungatedMean * LUFS_CONSTANTS.RELATIVE_GATE_OFFSET);
   if (gatedBlocks.length === 0) return -Infinity;
 
+  // Calculate integrated loudness
   const gatedMean = gatedBlocks.reduce((a, b) => a + b, 0) / gatedBlocks.length;
-  return -0.691 + 10 * Math.log10(gatedMean);
+  return LUFS_CONSTANTS.LOUDNESS_OFFSET + 10 * Math.log10(gatedMean);
 }
 
 /**
  * Normalize an AudioBuffer to target LUFS by applying gain
+ * Uses AudioBuffer constructor directly (no OfflineAudioContext overhead)
  */
 function normalizeToLUFS(audioBuffer, targetLUFS = -14) {
   const currentLUFS = measureLUFS(audioBuffer);
@@ -154,8 +185,12 @@ function normalizeToLUFS(audioBuffer, targetLUFS = -14) {
   const gainLinear = Math.pow(10, gainDB / 20);
   console.log('[LUFS] Applying gain:', gainDB.toFixed(2), 'dB');
 
-  const ctx = new OfflineAudioContext(audioBuffer.numberOfChannels, audioBuffer.length, audioBuffer.sampleRate);
-  const normalizedBuffer = ctx.createBuffer(audioBuffer.numberOfChannels, audioBuffer.length, audioBuffer.sampleRate);
+  // Create buffer directly without OfflineAudioContext (more efficient for simple gain)
+  const normalizedBuffer = new AudioBuffer({
+    numberOfChannels: audioBuffer.numberOfChannels,
+    length: audioBuffer.length,
+    sampleRate: audioBuffer.sampleRate
+  });
 
   for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
     const input = audioBuffer.getChannelData(ch);
@@ -238,6 +273,7 @@ const meterState = {
 
 let isProcessing = false;
 let processingCancelled = false;
+let processingPromise = null; // Track processing for proper cancellation
 
 // ============================================================================
 // Window Controls
@@ -350,16 +386,37 @@ const miniFormat = document.getElementById('mini-format');
 // ============================================================================
 
 async function cleanupAudioContext() {
-  // Stop any playing audio first
+  // Destroy WaveSurfer first - it may hold references to AudioContext
+  if (wavesurfer) {
+    try {
+      wavesurfer.destroy();
+    } catch (e) {
+      console.warn('Error destroying WaveSurfer:', e);
+    }
+    wavesurfer = null;
+  }
+
+  // Revoke blob URL
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = null;
+  }
+
+  // Stop any playing audio
   if (playerState.isPlaying) {
     stopAudio();
   }
+
   // Close existing AudioContext to prevent memory leaks
   if (audioNodes.context && audioNodes.context.state !== 'closed') {
     try {
       await audioNodes.context.close();
     } catch (e) {
-      console.warn('Error closing AudioContext:', e);
+      console.error('Failed to close AudioContext:', e);
+      // Check if context is in bad state
+      if (audioNodes.context.state !== 'closed') {
+        showToast('Warning: Audio system may be unstable. Restart recommended.', 'error', 10000);
+      }
     }
     // Reset all audio nodes
     Object.keys(audioNodes).forEach(key => {
@@ -381,10 +438,12 @@ function createAudioChain() {
   // Create analysers for visualization (stereo metering)
   audioNodes.analyser = ctx.createAnalyser();
   audioNodes.analyser.fftSize = 2048;
+  // Use smaller FFT for metering - 256 samples is sufficient and more efficient
+  // This reduces peak calculation from 2048 iterations to 256 per channel
   audioNodes.analyserL = ctx.createAnalyser();
-  audioNodes.analyserL.fftSize = 2048;
+  audioNodes.analyserL.fftSize = 256;
   audioNodes.analyserR = ctx.createAnalyser();
-  audioNodes.analyserR.fftSize = 2048;
+  audioNodes.analyserR.fftSize = 256;
   audioNodes.meterSplitter = ctx.createChannelSplitter(2);
 
   // Create nodes
@@ -1253,13 +1312,19 @@ function setupWaveformHover(duration) {
   if (hoverElements) {
     hoverElements.line.remove();
     hoverElements.label.remove();
+    hoverElements = null;
   }
 
-  // Remove old event listeners to prevent accumulation
-  if (hoverListeners) {
-    container.removeEventListener('mousemove', hoverListeners.move);
-    container.removeEventListener('mouseleave', hoverListeners.leave);
+  // Remove old event listeners from the stored container reference
+  // This prevents leaks if the container DOM element changed
+  if (hoverContainer && hoverListeners) {
+    hoverContainer.removeEventListener('mousemove', hoverListeners.move);
+    hoverContainer.removeEventListener('mouseleave', hoverListeners.leave);
+    hoverListeners = null;
   }
+
+  // Store new container reference
+  hoverContainer = container;
 
   // Create hover line
   const line = document.createElement('div');
@@ -1458,7 +1523,7 @@ function hideLoadingModal() {
 }
 
 // Consolidated cancel handler to prevent race conditions
-function cancelProcessing() {
+async function cancelProcessing() {
   if (!isProcessing || processingCancelled) return;
 
   processingCancelled = true;
@@ -1466,8 +1531,15 @@ function cancelProcessing() {
   modalCancelBtn.disabled = true;
   cancelBtn.disabled = true;
   showLoadingModal('Cancelling...', 0, false);
-  // Note: isProcessing will be set false by the processing function
-  // We don't set it here to avoid race conditions
+
+  // Wait for processing to actually complete before allowing new operations
+  if (processingPromise) {
+    try {
+      await processingPromise;
+    } catch (e) {
+      // Ignore cancellation error - expected
+    }
+  }
 }
 
 modalCancelBtn.addEventListener('click', cancelProcessing);
@@ -1647,10 +1719,13 @@ function seekTo(time) {
   if (playerState.isPlaying) {
     if (audioNodes.source) {
       try {
+        // Clear reference first to prevent race conditions
+        const oldSource = audioNodes.source;
+        audioNodes.source = null;
         // Clear onended before stopping to prevent it from setting isPlaying = false
-        audioNodes.source.onended = null;
-        audioNodes.source.stop();
-        audioNodes.source.disconnect();
+        oldSource.onended = null;
+        oldSource.stop();
+        oldSource.disconnect();
       } catch (e) {}
     }
     clearInterval(playerState.seekUpdateInterval);
@@ -1691,7 +1766,14 @@ function seekTo(time) {
   }
 
   // Release seek lock after a brief delay to allow audio to stabilize
-  setTimeout(() => { playerState.isSeeking = false; }, 50);
+  // Clear any existing timeout to prevent premature unlock from rapid seeks
+  if (playerState.seekTimeout) {
+    clearTimeout(playerState.seekTimeout);
+  }
+  playerState.seekTimeout = setTimeout(() => {
+    playerState.isSeeking = false;
+    playerState.seekTimeout = null;
+  }, 50);
 }
 
 function formatTime(seconds) {
@@ -1749,8 +1831,11 @@ async function loadFile(filePath) {
     if (loaded && audioNodes.buffer) {
       // Get file info from the decoded audio buffer and file path
       const rawName = filePath.split(/[\\/]/).pop();
-      // Sanitize file name: remove control characters and limit length
-      const name = rawName.replace(/[\x00-\x1F\x7F]/g, '').substring(0, 100);
+      // Sanitize file name: remove control characters, Windows-invalid chars, and limit length
+      const name = rawName
+        .replace(/[\x00-\x1F\x7F]/g, '')
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .substring(0, 100);
       const ext = name.split('.').pop().toUpperCase();
       const sampleRateKHz = Math.round(audioNodes.buffer.sampleRate / 1000);
       const duration = formatTime(audioNodes.buffer.duration);
@@ -1852,6 +1937,14 @@ processBtn.addEventListener('click', async () => {
   modalCancelBtn.disabled = false;
   cancelBtn.disabled = false;
 
+  // Store promise for cancellation tracking
+  processingPromise = processAudio(outputPath);
+  await processingPromise;
+  processingPromise = null;
+});
+
+async function processAudio(outputPath) {
+
   // Parse and validate settings
   const parsedSampleRate = parseInt(sampleRate.value) || 44100;
   const parsedBitDepth = parseInt(bitDepth.value) || 16;
@@ -1909,6 +2002,11 @@ processBtn.addEventListener('click', async () => {
       throw new Error('Cancelled');
     }
 
+    // Re-verify buffer exists (could be unloaded during async operations)
+    if (!audioNodes.buffer) {
+      throw new Error('Audio buffer was unloaded during processing');
+    }
+
     // Use Web Audio offline render (same processing chain as preview)
     showLoadingModal('Rendering audio...', 5, true);
 
@@ -1940,7 +2038,7 @@ processBtn.addEventListener('click', async () => {
 
   isProcessing = false;
   processBtn.disabled = false;
-});
+}
 
 cancelBtn.addEventListener('click', cancelProcessing);
 
