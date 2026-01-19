@@ -114,11 +114,13 @@ body {
 }
 
 .logo-icon {
-  font-size: 18px;
-  background: var(--bg-card);
-  padding: 8px;
-  border-radius: 10px;
-  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+}
+
+.logo-icon img {
+  width: 28px;
+  height: 28px;
 }
 
 .logo-title {
