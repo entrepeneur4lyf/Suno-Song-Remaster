@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Audio Mastering</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="logo-icon.png" type="image/png">
+</head>
+<body>
+  <div class="app-container web-version">
+    <!-- Header Row -->
+    <header class="app-header">
+      <div class="logo">
+        <div class="logo-icon"><img src="logo-icon.png" alt="Logo"></div>
+        <div class="logo-text">
+          <span class="logo-title">Web Audio Mastering</span>
+          <span class="logo-subtitle">Pro Mastering</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="checklist-mini">
+          <div class="check-item" id="mini-lufs"><span>●</span> -14 LUFS</div>
+          <div class="check-item" id="mini-peak"><span>●</span> True Peak</div>
+          <div class="check-item" id="mini-format"><span>●</span> WAV Ready</div>
+        </div>
+        <label class="tips-toggle">
+          <input type="checkbox" id="showTips" checked>
+          <span>Show Tips</span>
+        </label>
+        <div class="header-export">
+          <div class="progress-container hidden" id="progressContainer">
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <span id="progressText">0%</span>
+            <button id="cancelBtn" class="btn-cancel">Cancel</button>
+          </div>
+          <button id="processBtn" class="btn-process" disabled>
+            <span>🚀</span> Export WAV
+          </button>
+          <div class="info-wrapper">
+            <button class="btn-info" id="infoBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="16" x2="12" y2="12"/>
+                <line x1="12" y1="8" x2="12.01" y2="8"/>
+              </svg>
+            </button>
+            <div class="info-panel">
+              <div class="info-panel-title">About</div>
+              <div class="info-panel-content">
+                Based on <a href="https://github.com/SUP3RMASS1VE/Suno-Song-Remaster" target="_blank">Suno-Song-Remaster</a> by SUP3RMASS1VE
+                <br><span class="info-license">Licensed under ISC</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- File Drop Zone -->
+      <div class="file-zone" id="dropZone">
+        <div class="file-zone-content" id="fileZoneContent">
+          <div class="drop-icon">📂</div>
+          <p>Drop audio file here or</p>
+          <button id="selectFile" class="btn-select">Browse Files</button>
+          <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.flac,.aac,.m4a,.mp4" hidden>
+          <span class="file-types">MP3, WAV, FLAC, AAC, M4A, MP4</span>
+        </div>
+        <div class="file-loaded hidden" id="fileLoaded">
+          <div class="file-header">
+            <div class="file-info-row">
+              <span class="file-icon">🎵</span>
+              <div class="file-details">
+                <span class="file-name" id="fileName">No file</span>
+                <span class="file-meta" id="fileMeta">--</span>
+              </div>
+              <button id="changeFile" class="btn-change">Change</button>
+            </div>
+          </div>
+          <div class="audio-player">
+            <button id="playBtn" class="transport-btn" disabled title="Play/Pause (Space)">
+              <span id="playIcon" class="icon-play">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4a1 1 0 0 1 1.5-.86l12 7a1 1 0 0 1 0 1.72l-12 7A1 1 0 0 1 6 18V4z"/></svg>
+              </span>
+              <span id="pauseIcon" class="icon-pause" style="display:none">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1"/><rect x="14" y="4" width="5" height="16" rx="1"/></svg>
+              </span>
+            </button>
+            <button id="stopBtn" class="transport-btn" disabled title="Stop (S)">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect width="16" height="16" x="4" y="4" rx="2"/></svg>
+            </button>
+            <div class="player-track">
+              <span id="currentTime" class="time">0:00</span>
+              <div id="waveform" class="waveform-container"></div>
+              <input type="range" id="seekBar" class="seek-bar hidden" min="0" max="100" value="0">
+              <span id="duration" class="time">0:00</span>
+            </div>
+            <button id="bypassBtn" class="transport-btn btn-bypass" title="Toggle Effects">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+              <span class="bypass-label">FX</span>
+            </button>
+          </div>
+          <div class="level-meter" id="levelMeter">
+            <canvas id="meterCanvas" width="600" height="40"></canvas>
+            <div class="meter-labels">
+              <span>-48</span>
+              <span>-36</span>
+              <span>-24</span>
+              <span>-12</span>
+              <span>-6</span>
+              <span>0</span>
+            </div>
+            <div class="peak-display">
+              <span id="peakL">L: -∞ dB</span>
+              <span id="peakR">R: -∞ dB</span>
+            </div>
+            <div class="overload-indicator" id="overloadIndicator">CLIP</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings Grid - 4 columns -->
+      <div class="panel-grid">
+        <div class="settings-card">
+          <h3>Quick Fix <span class="live-badge">Live</span></h3>
+          <label class="toggle-row" data-tip="Light compression to glue the mix together and add punch.">
+            <span>Glue Compression</span>
+            <input type="checkbox" id="glueCompression">
+            <span class="toggle"></span>
+          </label>
+          <label class="toggle-row" data-tip="Removes sub-bass rumble below 30Hz that wastes headroom.">
+            <span>Clean Low End</span>
+            <input type="checkbox" id="cleanLowEnd" checked>
+            <span class="toggle"></span>
+          </label>
+        </div>
+
+        <div class="settings-card">
+          <h3>Stereo <span class="live-badge">Live</span></h3>
+          <div class="slider-row" data-tip="Stereo width: 0% = mono, 100% = original, 200% = extra wide.">
+            <span>Width</span>
+            <input type="range" id="stereoWidth" min="0" max="200" step="5" value="100">
+            <span class="slider-value" id="stereoWidthValue">100%</span>
+          </div>
+          <label class="toggle-row" data-tip="Narrows bass below 80Hz for better club/speaker mono compatibility.">
+            <span>Mono Bass</span>
+            <input type="checkbox" id="centerBass">
+            <span class="toggle"></span>
+          </label>
+        </div>
+
+        <div class="settings-card">
+          <h3>Polish <span class="live-badge">Live</span></h3>
+          <label class="toggle-row" data-tip="Reduces muddy frequencies around 250Hz for clarity.">
+            <span>Cut Mud</span>
+            <input type="checkbox" id="cutMud">
+            <span class="toggle"></span>
+          </label>
+          <label class="toggle-row" data-tip="Adds sparkle and brightness with a 12kHz high shelf boost.">
+            <span>Add Air</span>
+            <input type="checkbox" id="addAir">
+            <span class="toggle"></span>
+          </label>
+          <label class="toggle-row" data-tip="Tames harsh frequencies around 4-6kHz (sibilance, harshness).">
+            <span>Tame Harshness</span>
+            <input type="checkbox" id="tameHarsh">
+            <span class="toggle"></span>
+          </label>
+        </div>
+
+        <div class="settings-card">
+          <h3>Output</h3>
+          <div class="output-presets">
+            <button class="output-preset-btn active" data-preset="streaming" data-tip="44.1kHz/16-bit - Spotify, Apple Music, CD quality">Streaming</button>
+            <button class="output-preset-btn" data-preset="studio" data-tip="48kHz/24-bit - Studio quality, video production">Studio</button>
+          </div>
+          <div class="select-row" data-tip="44.1kHz is CD quality and Spotify standard. 48kHz for video.">
+            <span>Sample Rate</span>
+            <select id="sampleRate">
+              <option value="44100">44.1 kHz</option>
+              <option value="48000">48 kHz</option>
+            </select>
+          </div>
+          <div class="select-row" data-tip="16-bit is CD quality. 24-bit has more dynamic range.">
+            <span>Bit Depth</span>
+            <select id="bitDepth">
+              <option value="16">16-bit</option>
+              <option value="24">24-bit</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loudness + EQ Row -->
+      <div class="eq-row">
+        <div class="settings-card loudness-card">
+          <h3>Loudness <span class="live-badge">Live</span></h3>
+          <div class="loudness-faders">
+            <div id="inputGainFader" class="fader-container" data-tip="Adjust input level before processing. Double-click to reset to 0dB."></div>
+            <div id="ceilingFader" class="fader-container" data-tip="Maximum peak level. -1dB is standard for streaming."></div>
+          </div>
+          <div class="loudness-toggles">
+            <label class="toggle-row" data-tip="Adjusts overall volume to Spotify's -14 LUFS standard. Processed in background on file load.">
+              <span>Normalize -14 LUFS</span>
+              <input type="checkbox" id="normalizeLoudness" checked>
+              <span class="toggle"></span>
+            </label>
+            <label class="toggle-row" data-tip="Prevents audio from clipping by limiting peaks to the ceiling value.">
+              <span>True Peak Limit</span>
+              <input type="checkbox" id="truePeakLimit" checked>
+              <span class="toggle"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 5-Band EQ -->
+        <div class="eq-section">
+          <h3>EQ <span class="live-badge">Live</span></h3>
+          <div class="eq-bands">
+            <div class="eq-band" id="eqLowFader" data-tip="Low shelf at 80Hz"></div>
+            <div class="eq-band" id="eqLowMidFader" data-tip="Peak at 250Hz"></div>
+            <div class="eq-band" id="eqMidFader" data-tip="Peak at 1kHz"></div>
+            <div class="eq-band" id="eqHighMidFader" data-tip="Peak at 4kHz"></div>
+            <div class="eq-band" id="eqHighFader" data-tip="High shelf at 12kHz"></div>
+          </div>
+          <div class="eq-presets">
+            <button class="preset-btn active" data-preset="flat">Flat</button>
+            <button class="preset-btn" data-preset="vocal">Vocal Boost</button>
+            <button class="preset-btn" data-preset="bass">Bass Boost</button>
+            <button class="preset-btn" data-preset="bright">Bright</button>
+            <button class="preset-btn" data-preset="warm">Warm</button>
+            <button class="preset-btn" data-preset="aifix">AI Fix</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="statusMessage" class="status-message"></div>
+    </main>
+  </div>
+
+  <!-- Tooltip element -->
+  <div id="tooltip" class="tooltip"></div>
+
+  <!-- Loading Modal -->
+  <div id="loadingModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-spinner"></div>
+      <div class="modal-text" id="loadingText">Loading...</div>
+      <div class="modal-progress">
+        <div class="modal-progress-bar" id="loadingProgressBar"></div>
+      </div>
+      <div class="modal-percent" id="loadingPercent">0%</div>
+      <button id="modalCancelBtn" class="btn-cancel hidden">Cancel</button>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
