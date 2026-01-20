@@ -169,21 +169,59 @@ function measureLUFS(audioBuffer) {
 }
 
 /**
+ * Find the true peak of an AudioBuffer (maximum absolute sample value)
+ * Returns peak in dBTP (decibels relative to full scale)
+ */
+function findTruePeak(audioBuffer) {
+  let maxPeak = 0;
+
+  for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+    const channelData = audioBuffer.getChannelData(ch);
+    for (let i = 0; i < channelData.length; i++) {
+      const absSample = Math.abs(channelData[i]);
+      if (absSample > maxPeak) {
+        maxPeak = absSample;
+      }
+    }
+  }
+
+  // Convert to dBTP (0 dBTP = 1.0 linear)
+  return maxPeak > 0 ? 20 * Math.log10(maxPeak) : -Infinity;
+}
+
+/**
  * Normalize an AudioBuffer to target LUFS by applying gain
+ * Enforces true peak ceiling to prevent clipping
  * Uses AudioBuffer constructor directly (no OfflineAudioContext overhead)
  */
-function normalizeToLUFS(audioBuffer, targetLUFS = -14) {
+function normalizeToLUFS(audioBuffer, targetLUFS = -14, ceilingDB = -1) {
   const currentLUFS = measureLUFS(audioBuffer);
-  console.log('[LUFS] Current:', currentLUFS.toFixed(2), 'LUFS, Target:', targetLUFS, 'LUFS');
+  const currentPeakDB = findTruePeak(audioBuffer);
+
+  console.log('[LUFS] Current:', currentLUFS.toFixed(2), 'LUFS, Peak:', currentPeakDB.toFixed(2), 'dBTP');
+  console.log('[LUFS] Target:', targetLUFS, 'LUFS, Ceiling:', ceilingDB, 'dBTP');
 
   if (!isFinite(currentLUFS)) {
     console.warn('[LUFS] Could not measure loudness, skipping normalization');
     return audioBuffer;
   }
 
-  const gainDB = targetLUFS - currentLUFS;
-  const gainLinear = Math.pow(10, gainDB / 20);
-  console.log('[LUFS] Applying gain:', gainDB.toFixed(2), 'dB');
+  // Calculate gain needed to reach target LUFS
+  const lufsGainDB = targetLUFS - currentLUFS;
+
+  // Calculate maximum gain allowed before peaks hit ceiling
+  const maxGainDB = ceilingDB - currentPeakDB;
+
+  // Use the smaller of the two gains to prevent clipping
+  const actualGainDB = Math.min(lufsGainDB, maxGainDB);
+  const gainLinear = Math.pow(10, actualGainDB / 20);
+
+  if (actualGainDB < lufsGainDB) {
+    console.log('[LUFS] Gain limited by peak ceiling:', actualGainDB.toFixed(2), 'dB (wanted', lufsGainDB.toFixed(2), 'dB)');
+    console.log('[LUFS] Resulting LUFS will be:', (currentLUFS + actualGainDB).toFixed(2), 'LUFS instead of', targetLUFS, 'LUFS');
+  } else {
+    console.log('[LUFS] Applying gain:', actualGainDB.toFixed(2), 'dB');
+  }
 
   // Create buffer directly without OfflineAudioContext (more efficient for simple gain)
   const normalizedBuffer = new AudioBuffer({
