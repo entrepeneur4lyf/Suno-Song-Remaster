@@ -122,6 +122,7 @@ import EQVisualizer from './lib/eq-visualizer.js';
 const eqVisualizer = new EQVisualizer('eqVisualizer');
 const eqScaleToggle = document.getElementById('eqScaleToggle');
 const eqSmoothToggle = document.getElementById('eqSmoothToggle');
+const eqStyleToggle = document.getElementById('eqStyleToggle');
 const eqBarsSlider = document.getElementById('eqBarsSlider');
 const eqBarsValue = document.getElementById('eqBarsValue');
 let eqVisualizerAnimationFrame = null;
@@ -139,11 +140,25 @@ if (eqSmoothToggle) {
   });
 }
 
+if (eqStyleToggle) {
+  eqStyleToggle.addEventListener('change', (e) => {
+    const style = e.target.checked ? 'curve' : 'bars';
+    eqVisualizer.setStyle(style);
+  });
+}
+
 if (eqBarsSlider && eqBarsValue) {
   eqBarsSlider.addEventListener('input', (e) => {
     const value = e.target.value;
     eqBarsValue.textContent = value;
     eqVisualizer.setBars(value);
+  });
+}
+
+const eqColorToggle = document.getElementById('eqColorToggle');
+if (eqColorToggle) {
+  eqColorToggle.addEventListener('change', (e) => {
+    eqVisualizer.setColorMode(e.target.checked ? 'linear' : 'gradient');
   });
 }
 
