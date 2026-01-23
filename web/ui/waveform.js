@@ -16,6 +16,7 @@ let originalBlobUrl = null; // Store original blob URL for FX bypass
 let hoverContainer = null;
 let hoverElements = null;
 let hoverListeners = null;
+let bassEnvelope = null; // Normalized bass energy per window for coloring
 
 // ============================================================================
 // Waveform Initialization
@@ -45,17 +46,15 @@ export function initWaveSurfer(audioBuffer, originalBlob, callbacks = {}) {
   }
 
   try {
+    // Precompute bass envelope used to color the waveform
+    bassEnvelope = computeBassEnvelope(audioBuffer, 2048, 200);
+
     // Create gradient
     const ctx = document.createElement('canvas').getContext('2d');
     const waveGradient = ctx.createLinearGradient(0, 0, 0, 80);
     waveGradient.addColorStop(0, 'rgba(188, 177, 231, 0.8)');
     waveGradient.addColorStop(0.5, 'rgba(154, 143, 209, 0.6)');
     waveGradient.addColorStop(1, 'rgba(100, 90, 160, 0.3)');
-
-    const progressGradient = ctx.createLinearGradient(0, 0, 0, 80);
-    progressGradient.addColorStop(0, '#BCB1E7');
-    progressGradient.addColorStop(0.5, '#9A8FD1');
-    progressGradient.addColorStop(1, '#7A6FB1');
 
     // Create blob URL for WaveSurfer (tracked for cleanup)
     // Store as both current and original so we can switch back on FX bypass
@@ -65,7 +64,8 @@ export function initWaveSurfer(audioBuffer, originalBlob, callbacks = {}) {
     wavesurfer = WaveSurfer.create({
       container: '#waveform',
       waveColor: waveGradient,
-      progressColor: progressGradient,
+      // Dim the played section slightly while keeping underlying bass colors visible
+      progressColor: 'rgba(0, 0, 0, 0.22)',
       cursorColor: '#ffffff',
       cursorWidth: 2,
       height: 80,
@@ -74,6 +74,7 @@ export function initWaveSurfer(audioBuffer, originalBlob, callbacks = {}) {
       interact: true,
       dragToSeek: true,
       url: currentBlobUrl,
+      renderFunction: (peaks, canvasCtx) => renderBassColoredWaveform(peaks, canvasCtx, bassEnvelope)
     });
 
     // Custom hover handler (uses our known duration, not WaveSurfer's state)
@@ -315,6 +316,9 @@ export function updateWaveformBuffer(audioBuffer) {
   // Create WAV blob from AudioBuffer
   const blob = audioBufferToWavBlob(audioBuffer);
 
+  // Recompute bass envelope so colors match the new audio content
+  bassEnvelope = computeBassEnvelope(audioBuffer, 2048, 200);
+
   // Revoke old URL and create new one
   if (currentBlobUrl) {
     URL.revokeObjectURL(currentBlobUrl);
@@ -380,4 +384,89 @@ function audioBufferToWavBlob(buffer) {
   }
 
   return new Blob([arrayBuffer], { type: 'audio/wav' });
+}
+
+// ============================================================================
+// Bass-Aware Coloring Helpers
+// ============================================================================
+
+// Compute a normalized bass energy envelope using a simple one-pole low-pass
+// filter and RMS per window. The envelope length controls the color resolution.
+function computeBassEnvelope(audioBuffer, points = 2048, cutoffHz = 200) {
+  const channel = audioBuffer.getChannelData(0);
+  const sampleRate = audioBuffer.sampleRate;
+  const windowSize = Math.max(1, Math.floor(channel.length / points));
+
+  // One-pole low-pass (RC) filter coefficient
+  const alpha = Math.exp((-2 * Math.PI * cutoffHz) / sampleRate);
+
+  let low = 0;
+  const envelope = [];
+
+  for (let i = 0; i < points; i++) {
+    const start = i * windowSize;
+    const end = Math.min(channel.length, start + windowSize);
+
+    let sumSq = 0;
+    let count = 0;
+
+    for (let j = start; j < end; j++) {
+      low = low + (1 - alpha) * (channel[j] - low);
+      const bassSample = Math.abs(low);
+      sumSq += bassSample * bassSample;
+      count++;
+    }
+
+    const rms = count ? Math.sqrt(sumSq / count) : 0;
+    envelope.push(rms);
+  }
+
+  // Normalize to 0..1
+  const max = Math.max(...envelope, 1e-6);
+  return envelope.map((v) => v / max);
+}
+
+function renderBassColoredWaveform(peaks, ctx, envelope) {
+  if (!peaks || !peaks.length) return;
+
+  const left = peaks[0];
+  const right = peaks[1] || left;
+  const length = Math.min(left?.length || 0, right?.length || left?.length || 0);
+  if (!length) return;
+
+  const width = ctx.canvas.width;
+  const height = ctx.canvas.height;
+  const halfH = height / 2;
+  const step = width / length;
+
+  ctx.clearRect(0, 0, width, height);
+
+  for (let i = 0; i < length; i++) {
+    const bass = sampleEnvelope(envelope, i / Math.max(1, length - 1));
+    const [r, g, b] = lerpColor([59, 130, 246], [239, 68, 68], bass); // blue -> red
+
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.9)`;
+    const x = i * step;
+
+    const leftAmp = Math.min(halfH, Math.abs(left[i]) * halfH);
+    ctx.fillRect(x, halfH - leftAmp, Math.max(1, step), leftAmp);
+
+    const rightAmp = Math.min(halfH, Math.abs(right[i]) * halfH);
+    ctx.fillRect(x, halfH, Math.max(1, step), rightAmp);
+  }
+}
+
+function sampleEnvelope(envelope, t) {
+  if (!envelope || !envelope.length) return 0;
+  const clamped = Math.max(0, Math.min(1, t));
+  const idx = Math.min(envelope.length - 1, Math.floor(clamped * (envelope.length - 1)));
+  return envelope[idx];
+}
+
+function lerpColor(from, to, t) {
+  return [
+    Math.round(from[0] + (to[0] - from[0]) * t),
+    Math.round(from[1] + (to[1] - from[1]) * t),
+    Math.round(from[2] + (to[2] - from[2]) * t),
+  ];
 }

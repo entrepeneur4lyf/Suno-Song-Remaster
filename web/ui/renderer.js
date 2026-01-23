@@ -304,3 +304,40 @@ export async function renderToAudioBuffer(sourceBuffer, settings, mode = 'previe
 
   return { buffer: renderedBuffer, lufs: finalLufs };
 }
+
+/**
+ * Resample an AudioBuffer to a target sample rate
+ * @param {AudioBuffer} sourceBuffer
+ * @param {number} targetSampleRate
+ * @returns {Promise<AudioBuffer>}
+ */
+export async function resampleBuffer(sourceBuffer, targetSampleRate) {
+  if (sourceBuffer.sampleRate === targetSampleRate) {
+    return sourceBuffer;
+  }
+
+  console.log('[Resample] Starting...', {
+    from: sourceBuffer.sampleRate,
+    to: targetSampleRate,
+    duration: sourceBuffer.duration
+  });
+
+  const duration = sourceBuffer.duration;
+  const numFrames = Math.ceil(duration * targetSampleRate);
+  
+  const offlineCtx = new OfflineAudioContext(
+    sourceBuffer.numberOfChannels,
+    numFrames,
+    targetSampleRate
+  );
+
+  const source = offlineCtx.createBufferSource();
+  source.buffer = sourceBuffer;
+  source.connect(offlineCtx.destination);
+  source.start(0);
+
+  const resampled = await offlineCtx.startRendering();
+  console.log('[Resample] Complete');
+  
+  return resampled;
+}
